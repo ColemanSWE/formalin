@@ -1,1 +1,5 @@
 /target
+
+# Your own fonts for local builds only (see assets/fonts/private/README.md)
+/assets/fonts/private/*
+!/assets/fonts/private/README.md

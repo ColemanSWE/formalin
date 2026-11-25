@@ -30,7 +30,7 @@ impl Default for Formalin {
 impl Plugin for Formalin {
     const NAME: &'static str = "Formalin";
     const VENDOR: &'static str = "Formalin";
-    const URL: &'static str = "";
+    const URL: &'static str = env!("CARGO_PKG_HOMEPAGE");
     const EMAIL: &'static str = "";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -121,8 +121,8 @@ impl ClapPlugin for Formalin {
     const CLAP_ID: &'static str = "audio.formalin.tape";
     const CLAP_DESCRIPTION: Option<&'static str> =
         Some("A glass orb of tape: wow & flutter, saturation, pitch, smeared reverb, and a transport you can grab");
-    const CLAP_MANUAL_URL: Option<&'static str> = None;
-    const CLAP_SUPPORT_URL: Option<&'static str> = None;
+    const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
+    const CLAP_SUPPORT_URL: Option<&'static str> = Some("https://github.com/ColemanSWE/formalin/issues");
     const CLAP_FEATURES: &'static [ClapFeature] = &[
         ClapFeature::AudioEffect,
         ClapFeature::Stereo,

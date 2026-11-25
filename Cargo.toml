@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 description = "A glass orb of tape: wow & flutter, saturation, pitch, smeared reverb, and a transport you can grab"
 license = "GPL-3.0-or-later"
+repository = "https://github.com/ColemanSWE/formalin"
+homepage = "https://github.com/ColemanSWE/formalin"
+readme = "README.md"
+keywords = ["audio", "plugin", "vst3", "clap", "tape"]
+# nih-plug is a git dependency, so this can't go on crates.io.
+publish = false
 
 [workspace]
 members = ["xtask"]

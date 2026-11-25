@@ -1,7 +1,7 @@
 //! The service panel: every parameter as a plain early-web form control.
 //! Deliberately unstyled next to the scene -- the access hatch, not the show.
 
-use super::style::{corepix, esoterica, INK, LINK};
+use super::style::{display, sigil_font, Sigil, INK, LINK};
 use crate::params::{CatchUp, FormalinParams};
 use nih_plug::prelude::*;
 use nih_plug_egui::egui::{pos2, vec2, Align2, Color32, FontId, Painter, Rect, Sense, Stroke, Ui};
@@ -15,7 +15,7 @@ pub fn draw(ui: &Ui, painter: &Painter, rect: Rect, p: &FormalinParams, setter: 
     painter.line_segment([rect.left_top(), rect.right_top()], Stroke::new(2.0, RULE));
 
     let head_y = rect.top() + 18.0;
-    let t = painter.text(pos2(rect.left() + 14.0, head_y), Align2::LEFT_CENTER, "SERVICE PANEL", corepix(18.0), INK);
+    let t = painter.text(pos2(rect.left() + 14.0, head_y), Align2::LEFT_CENTER, "SERVICE PANEL", display(18.0), INK);
     painter.text(
         pos2(t.right() + 12.0, head_y + 1.0),
         Align2::LEFT_CENTER,
@@ -52,29 +52,29 @@ pub fn draw(ui: &Ui, painter: &Painter, rect: Rect, p: &FormalinParams, setter: 
     let [pitch, wobble, tape, reverb] = groups(row1, [1, 2, 2, 3]);
     let [transport, out] = groups(row2, [3, 1]);
 
-    // Each control gets an Esoterica sigil (A-L are the only glyphs it has).
+    // Each control gets a sigil (see style::Sigil).
     let c = fieldset(painter, pitch, "PITCH", 1);
-    slider(ui, painter, c[0], &p.pitch, setter, "pitch", "I");
+    slider(ui, painter, c[0], &p.pitch, setter, "pitch", Sigil::Pitch);
 
     let c = fieldset(painter, wobble, "WOBBLE", 2);
-    slider(ui, painter, c[0], &p.wow, setter, "wow", "G");
-    slider(ui, painter, c[1], &p.flutter, setter, "flutter", "E");
+    slider(ui, painter, c[0], &p.wow, setter, "wow", Sigil::Wow);
+    slider(ui, painter, c[1], &p.flutter, setter, "flutter", Sigil::Flutter);
 
     let c = fieldset(painter, tape, "TAPE", 2);
-    slider(ui, painter, c[0], &p.drive, setter, "drive", "H");
-    slider(ui, painter, c[1], &p.age, setter, "age", "F");
+    slider(ui, painter, c[0], &p.drive, setter, "drive", Sigil::Drive);
+    slider(ui, painter, c[1], &p.age, setter, "age", Sigil::Age);
 
     let c = fieldset(painter, reverb, "REVERB", 3);
-    slider(ui, painter, c[0], &p.smear, setter, "smear", "L");
-    slider(ui, painter, c[1], &p.decay, setter, "decay", "C");
-    slider(ui, painter, c[2], &p.reverb_mix, setter, "wet/dry", "B");
+    slider(ui, painter, c[0], &p.smear, setter, "smear", Sigil::Smear);
+    slider(ui, painter, c[1], &p.decay, setter, "decay", Sigil::Decay);
+    slider(ui, painter, c[2], &p.reverb_mix, setter, "wet/dry", Sigil::Wet);
 
     let c = fieldset(painter, transport, "TRANSPORT", 3);
-    slider(ui, painter, c[0], &p.speed, setter, "speed", "K");
-    slider(ui, painter, c[1], &p.stop_time, setter, "stop time", "A");
+    slider(ui, painter, c[0], &p.speed, setter, "speed", Sigil::Speed);
+    slider(ui, painter, c[1], &p.stop_time, setter, "stop time", Sigil::StopTime);
 
     let c_out = fieldset(painter, out, "OUTPUT", 1);
-    slider(ui, painter, c_out[0], &p.output, setter, "gain", "D");
+    slider(ui, painter, c_out[0], &p.output, setter, "gain", Sigil::Output);
 
     // The transport's switches.
     let sw = c[2];
@@ -135,7 +135,7 @@ fn groups<const N: usize>(row: Rect, cells: [usize; N]) -> [Rect; N] {
 /// Returns `n` equal cells inside it, split by light dividers.
 fn fieldset(painter: &Painter, rect: Rect, legend: &str, n: usize) -> Vec<Rect> {
     painter.rect_stroke(rect, 0.0, Stroke::new(1.0, RULE), egui_stroke_kind());
-    let galley = painter.layout_no_wrap(legend.to_owned(), corepix(12.0), INK);
+    let galley = painter.layout_no_wrap(legend.to_owned(), display(12.0), INK);
     let at = pos2(rect.left() + 8.0, rect.top() - galley.size().y / 2.0);
     painter.rect_filled(Rect::from_min_size(at - vec2(4.0, 0.0), galley.size() + vec2(8.0, 0.0)), 0.0, Color32::WHITE);
     painter.galley(at, galley, INK);
@@ -166,7 +166,7 @@ fn reset<P: Param>(setter: &ParamSetter, param: &P) {
 }
 
 fn link(ui: &Ui, painter: &Painter, at: nih_plug_egui::egui::Pos2, text: &str, align: Align2) -> bool {
-    let font = corepix(12.0);
+    let font = display(12.0);
     let galley = painter.layout_no_wrap(text.to_owned(), font.clone(), LINK);
     let r = align.anchor_size(at, galley.size());
     let resp = ui.interact(r, ui.id().with(("link", text)), Sense::click());
@@ -178,7 +178,7 @@ fn link(ui: &Ui, painter: &Painter, at: nih_plug_egui::egui::Pos2, text: &str, a
 
 /// A plain horizontal slider: label, value, a groove and a black thumb.
 /// Click or drag to set, double-click to reset.
-fn slider<P: Param>(ui: &Ui, painter: &Painter, cell: Rect, param: &P, setter: &ParamSetter, label: &str, glyph: &str) {
+fn slider<P: Param>(ui: &Ui, painter: &Painter, cell: Rect, param: &P, setter: &ParamSetter, label: &str, sigil: Sigil) {
     let track = Rect::from_min_max(pos2(cell.left() + 10.0, cell.bottom() - 18.0), pos2(cell.right() - 10.0, cell.bottom() - 14.0));
     let resp = ui.interact(cell, ui.id().with(("svc", label)), Sense::click_and_drag());
 
@@ -207,7 +207,7 @@ fn slider<P: Param>(ui: &Ui, painter: &Painter, cell: Rect, param: &P, setter: &
 
     let v = param.unmodulated_normalized_value();
     painter.text(pos2(cell.left() + 8.0, cell.top() + 14.0), Align2::LEFT_CENTER, label, FontId::proportional(14.0), INK);
-    painter.text(pos2(cell.left() + 8.0, cell.top() + 34.0), Align2::LEFT_CENTER, glyph, esoterica(20.0), INK);
+    painter.text(pos2(cell.left() + 8.0, cell.top() + 34.0), Align2::LEFT_CENTER, sigil.glyph(), sigil_font(18.0), INK);
     painter.text(
         pos2(cell.right() - 8.0, cell.top() + 34.0),
         Align2::RIGHT_CENTER,

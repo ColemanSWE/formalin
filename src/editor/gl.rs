@@ -1,10 +1,16 @@
 //! Raw OpenGL rendering of the scene, run inside egui via a paint callback.
 //!
 //! Three passes each frame, all full-screen triangles:
-//!   1. `scene.frag`   -- the tank and the orb (raymarched) -> `scene` texture
-//!   2. `persist.frag` -- phosphor burn-in: max(scene, last frame * persist)
-//!                        ping-ponged between two float textures
-//!   3. `post.frag`    -- CRT/tape damage, drawn into egui's framebuffer
+//!
+//! ```text
+//! 1. scene.frag  the tank and the orb (raymarched)            -> scene texture
+//! 2. ink.frag    feedback buffer: ink in the water and
+//!                fingerprints on the glass, ping-ponged       -> ink texture
+//! 3. post.frag   the front of the tank: haze, ink, grime,
+//!                fixation                                     -> egui's framebuffer
+//! ```
+//!
+//! Every fragment shader gets `#version 150` + `common.glsl` prepended.
 //!
 //! egui restores its own GL state after the callback, so we only need to
 //! unbind what we bind.
@@ -14,7 +20,8 @@ use nih_plug_egui::egui::PaintCallbackInfo;
 
 const VERT: &str = include_str!("shaders/fullscreen.vert");
 const SCENE: &str = include_str!("shaders/scene.frag");
-const PERSIST: &str = include_str!("shaders/persist.frag");
+const INK: &str = include_str!("shaders/ink.frag");
+const COMMON: &str = include_str!("shaders/common.glsl");
 const POST: &str = include_str!("shaders/post.frag");
 
 /// Everything the shaders need for one frame. Plain data, copied into the callback.
@@ -42,7 +49,16 @@ pub struct Uniforms {
     pub level: f32,
     /// 0 = alive, 1 = stopped dead (static takes over).
     pub dead: f32,
-    pub persist: f32,
+    pub smear: f32,
+    /// Wall-clock and tape-time seconds this frame (tape time is negative in reverse).
+    pub dt: f32,
+    pub dt_world: f32,
+    /// Fraction of ink that survives this frame (from Decay).
+    pub ink_keep: f32,
+    /// Ink emission rate (level x wet/dry); negative pulls ink back in.
+    pub ink_emit: f32,
+    /// Fraction of fingerprint grease that survives this frame (from Age).
+    pub smudge_keep: f32,
 }
 
 struct Target {
@@ -53,7 +69,7 @@ struct Target {
 pub struct SceneGl {
     vao: glow::VertexArray,
     scene: glow::Program,
-    persist: glow::Program,
+    ink: glow::Program,
     post: glow::Program,
     /// [scene, accum A, accum B]
     targets: Vec<Target>,
@@ -67,7 +83,7 @@ impl SceneGl {
             Ok(Self {
                 vao: gl.create_vertex_array()?,
                 scene: program(gl, SCENE)?,
-                persist: program(gl, PERSIST)?,
+                ink: program(gl, INK)?,
                 post: program(gl, POST)?,
                 targets: Vec::new(),
                 size: (0, 0),
@@ -157,14 +173,24 @@ impl SceneGl {
             }
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
 
-            // 2. Persistence (ping-pong)
+            // 2. Ink + fingerprints (ping-pong)
             let (prev, cur) = if self.flip { (1, 2) } else { (2, 1) };
             gl.bind_framebuffer(glow::FRAMEBUFFER, Some(self.targets[cur].fbo));
-            let p = self.persist;
+            let p = self.ink;
             gl.use_program(Some(p));
-            bind_tex(gl, p, "uScene", 0, self.targets[0].tex);
-            bind_tex(gl, p, "uPrev", 1, self.targets[prev].tex);
-            u1(gl, p, "uPersist", u.persist);
+            bind_tex(gl, p, "uPrev", 0, self.targets[prev].tex);
+            u2(gl, p, "uRes", res);
+            u1(gl, p, "uDt", u.dt);
+            u1(gl, p, "uDtWorld", u.dt_world);
+            u1(gl, p, "uWorld", u.world);
+            u1(gl, p, "uKeep", u.ink_keep);
+            u1(gl, p, "uEmit", u.ink_emit);
+            u1(gl, p, "uSmear", u.smear);
+            u1(gl, p, "uSmudgeKeep", u.smudge_keep);
+            u1(gl, p, "uGrab", u.grab);
+            u2(gl, p, "uOrb", u.orb);
+            u1(gl, p, "uOrbScreenR", u.orb_screen_r);
+            u2(gl, p, "uMouse", u.mouse);
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
 
             // 3. Post, into egui's framebuffer
@@ -175,9 +201,13 @@ impl SceneGl {
             gl.scissor(clip.left_px, clip.from_bottom_px, clip.width_px, clip.height_px);
             let p = self.post;
             gl.use_program(Some(p));
-            bind_tex(gl, p, "uTex", 0, self.targets[cur].tex);
+            bind_tex(gl, p, "uTex", 0, self.targets[0].tex);
+            bind_tex(gl, p, "uInk", 1, self.targets[cur].tex);
             u2(gl, p, "uRes", res);
+            u2(gl, p, "uOrb", u.orb);
+            u1(gl, p, "uOrbScreenR", u.orb_screen_r);
             u1(gl, p, "uTime", u.time);
+            u1(gl, p, "uWorld", u.world);
             u1(gl, p, "uWow", u.wow);
             u1(gl, p, "uFlutter", u.flutter);
             u1(gl, p, "uDrive", u.drive);
@@ -200,7 +230,10 @@ impl SceneGl {
 unsafe fn program(gl: &glow::Context, frag: &str) -> Result<glow::Program, String> {
     let p = gl.create_program()?;
     let mut shaders = Vec::new();
-    for (kind, src) in [(glow::VERTEX_SHADER, VERT), (glow::FRAGMENT_SHADER, frag)] {
+    let frag = format!("#version 150
+{COMMON}
+{frag}");
+    for (kind, src) in [(glow::VERTEX_SHADER, VERT), (glow::FRAGMENT_SHADER, frag.as_str())] {
         let s = gl.create_shader(kind)?;
         gl.shader_source(s, src);
         gl.compile_shader(s);

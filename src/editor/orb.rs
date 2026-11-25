@@ -158,7 +158,8 @@ impl Orb {
         self.tilt_vel += (-(self.tilt - 0.25) * 20.0 - self.tilt_vel * 3.0) * dt;
         self.tilt = (self.tilt + self.tilt_vel * dt).clamp(-0.9, 1.2);
         let target = if self.grabbed { 1.0 } else { 0.0 };
-        self.grab_amount += (target - self.grab_amount) * (1.0 - (-dt * 12.0).exp());
+        // Slow enough that you see the filings snap into the field.
+        self.grab_amount += (target - self.grab_amount) * (1.0 - (-dt * 6.0).exp());
     }
 
     pub fn is_held(&self) -> bool {

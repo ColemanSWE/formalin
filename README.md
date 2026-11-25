@@ -1,14 +1,20 @@
 # Formalin
 
-A glass orb of tape. CLAP + VST3, written in Rust with [nih-plug].
+A tape machine you hold in your hand. Formalin is a CLAP and VST3 audio
+effect, written in Rust with [nih-plug]: wow and flutter, tape saturation,
+pitch shifting, a smeared reverb, and a transport you can grab, stop,
+reverse and throw.
+
+![Formalin's window: a glass orb holding a creature, floating in a murky specimen tank](docs/screenshot.png)
 
 ```
-in -> pitch -> wow/flutter -> saturation -> smeared reverb -> transport -> out
+in -> pitch -> wow/flutter -> saturation -> reverb -> transport -> out
 ```
 
-The window is an OpenGL scene: a specimen tank holding a glass orb with
-something alive inside, seen through a CRT that the effect damages. The orb's
-spin *is* the tape speed.
+## Playing it
+
+The window is a specimen tank holding a glass orb with something alive
+inside. The orb's spin *is* the tape speed.
 
 | Gesture | Does |
 |---|---|
@@ -19,85 +25,127 @@ spin *is* the tape speed.
 | Scroll over it | Sink or raise it (Pitch) |
 | Double-click | Toggle the Tape Stop switch |
 
-The orb writes the automatable **Speed** parameter, so the DAW can record a
-performance. Everything else is in the **service panel** (bottom right).
+The orb writes the automatable **Speed** parameter, so your DAW can record a
+performance. Every parameter is also in the **service panel** (bottom right):
 
-The picture follows the sound: wow sways the image, flutter jitters lines,
-drive splits colour, age clouds the water, smear leaves phosphor trails, and
-a stopped tape dissolves to static. The tank's caustics and particles move on
-tape time, so they slow, stop and run backwards with the audio.
+![The service panel: plain form controls grouped as pitch, wobble, tape, reverb, transport and output](docs/service-panel.png)
 
-| Param | What it does |
-|---|---|
-| Wow / Flutter | Slow wobble + fast jitter of tape speed (modulated delay) |
-| Drive / Age | Asymmetric tanh saturation / high-end loss of worn tape |
-| Pitch | Real-time pitch shift, -12..+12 semitones |
-| Speed | Read-head speed, -2..2 (the orb). Below 1 builds lag behind live |
-| Catch-up | Rush (play fast until caught up) or Snap (crossfade back to live) |
-| Tape Stop / Stop Time | Coast the transport to a halt; automate it for drops |
-| Smear / Decay / Reverb Mix | Diffused FDN reverb: blur amount, RT60, wet level |
-| Output | Output gain |
+## What you see is what you hear
 
-## Build
+The picture is driven by the same values as the sound:
 
-```sh
-cargo test --lib                          # DSP unit tests
-cargo xtask bundle formalin --release    # -> target/bundled/
-```
+- **Tape speed:** the tank's caustics, particles and ink all move on tape
+  time, so they slow, freeze and run backwards with the audio.
+- **Holding the orb:** it becomes a magnet, and the particles snap into
+  field lines around it like iron filings.
+- **Stopping:** the formalin *fixes*: the water clouds milky from the edges
+  in and the creature goes grey and still.
+- **Wow / Flutter:** the image sways and jitters like a worn tape.
+- **Drive:** the orb flattens, reddens and boils, with heat haze rising off it.
+- **Reverb:** the creature bleeds ink into the water in time with the output
+  level; Decay sets how long it hangs there.
+- **Age:** the water yellows, grime creeps up the glass, and your
+  fingerprints stay on it longer.
 
-## Install (Windows)
+## Parameters
 
-Copy from `target/bundled/`:
-- `Formalin.vst3` -> `C:\Program Files\Common Files\VST3\`
-- `Formalin.clap` -> `C:\Program Files\Common Files\CLAP\`
+| Group | Parameter | What it does |
+|---|---|---|
+| Pitch | Pitch | Real-time pitch shift, -12 to +12 semitones |
+| Wobble | Wow / Flutter | Slow wobble and fast jitter of tape speed |
+| Tape | Drive / Age | Asymmetric tape saturation / high-frequency loss of worn tape |
+| Reverb | Smear / Decay / Wet-dry | Diffused reverb: blur, decay time (RT60), and the reverb's own wet/dry mix |
+| Transport | Speed | Read-head speed, -2x to 2x (the orb). Below 1x falls behind live |
+| Transport | Stop Time / Tape Stop | Coast the transport to a halt; automate it for drops |
+| Transport | Catch-up | After slowing down: *Rush* plays fast until it's caught up, *Snap* crossfades straight back to live |
+| Output | Gain | Output level |
 
-Then rescan plugins in your DAW.
+There is no global dry/wet: Wet-dry only blends the reverb.
 
-### Faster dev loop
+## Building
 
-Link the whole build folder into the VST3 folder once (admin PowerShell).
-Hosts scan subfolders, so every `cargo xtask bundle` shows up, and the link
-survives renames:
-
-```powershell
-New-Item -ItemType Junction -Path "C:\Program Files\Common Files\VST3\formalin-dev" -Target "<repo>\target\bundled"
-```
-
-Remove the plugin from your project before rebuilding (the DAW locks the DLL
-while it's loaded), then re-add it.
-
-For UI work you can skip the DAW entirely:
+You need a recent stable [Rust toolchain](https://rustup.rs). Then:
 
 ```sh
+cargo xtask bundle formalin --release
+```
+
+This writes `Formalin.vst3` and `Formalin.clap` to `target/bundled/`.
+
+**Linux** also needs these development packages (Debian/Ubuntu names):
+
+```sh
+sudo apt install libasound2-dev libgl-dev libjack-dev libx11-xcb-dev libxcb1-dev \
+  libxcb-dri2-0-dev libxcb-icccm4-dev libxcursor-dev libxkbcommon-dev \
+  libxcb-shape0-dev libxcb-xfixes0-dev
+```
+
+**macOS:** to build one bundle for both Apple Silicon and Intel Macs:
+
+```sh
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+cargo xtask bundle-universal formalin --release
+```
+
+## Installing
+
+Copy the bundles from `target/bundled/` into your plugin folders, then
+rescan plugins in your DAW.
+
+| Platform | VST3 | CLAP |
+|---|---|---|
+| Windows | `C:\Program Files\Common Files\VST3\` | `C:\Program Files\Common Files\CLAP\` |
+| macOS | `~/Library/Audio/Plug-Ins/VST3/` | `~/Library/Audio/Plug-Ins/CLAP/` |
+| Linux | `~/.vst3/` | `~/.clap/` |
+
+On macOS the bundles aren't code-signed. If you download a build rather
+than compiling it yourself, macOS may refuse to load it; clear the
+quarantine flag first:
+
+```sh
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/Formalin.vst3
+```
+
+Formalin is VST3 and CLAP only, with no AU or AAX, so it won't load in Logic
+Pro or Pro Tools. The window needs OpenGL 3.2.
+
+**Tested on:** Windows 11 with FL Studio. macOS and Linux builds are checked
+by CI but haven't been tried in a host yet; reports are welcome.
+
+## Fonts
+
+Formalin bundles two fonts under the [SIL Open Font License](https://openfontlicense.org):
+[Pirata One](https://fonts.google.com/specimen/Pirata+One) for display text
+and [Noto Sans Symbols](https://fonts.google.com/noto/specimen/Noto+Sans+Symbols)
+for the alchemical symbols. Their licenses are in `assets/fonts/`.
+
+To use different fonts in your own builds, see
+[`assets/fonts/private/README.md`](assets/fonts/private/README.md).
+
+## Development
+
+```sh
+cargo test --lib                                      # DSP unit tests
 cargo run --features standalone --bin formalin_standalone -- --backend dummy
 ```
 
-## Layout
+The second command opens the plugin as a desktop app, so you can work on the
+UI without a DAW. In debug builds, set `FORMALIN_PREVIEW` to any of
+`panel,still,rew,held,hot,aged` to force those states for screenshots.
 
-- `src/lib.rs`: plugin glue (nih-plug traits, process loop)
-- `src/params.rs`: parameters. **Don't change `#[id]`s once you use it in a project.**
-- `src/dsp/`: plain-Rust DSP, one file per effect, no nih-plug types
-- `src/meters.rs`: lock-free values the audio thread publishes for the GUI
-- `src/editor/`: the window. `orb.rs` (physics + gestures), `gl.rs` (three
-  render passes), `shaders/` (GLSL 150), `panel.rs` (service panel)
-- `assets/fonts/`: Corepix (display) and Esoterica (a symbol font: A-L only)
-
-Debug builds of the standalone accept `FORMALIN_PREVIEW=panel|still|rew` to
-force a UI state for screenshots.
-
-## Ideas / next steps
-
-- **Hiss + head bump**: noise floor and a low-mid resonance in `saturation.rs`
-- **Oversampling** around the saturator to cut aliasing at high drive
-- **Modulated FDN delays** in the reverb for a more chorused, lush tail
-- **Better pitch shifter**: pick grain splice points by autocorrelation (less warble)
-- **More gestures**: shake to trigger flutter bursts, pinch to tear the membrane
-- **MIDI**: a note-on grabs the orb, note-off lets go
-- **Presets**, stored as named "specimens"
+```
+src/lib.rs        plugin glue: nih-plug traits and the process loop
+src/params.rs     parameters (don't change their #[id]s: hosts save them)
+src/dsp/          the DSP, one file per effect, plain Rust with no nih-plug types
+src/meters.rs     lock-free values the audio thread publishes for the GUI
+src/editor/       the window: orb.rs (physics and gestures), gl.rs (three
+                  render passes), shaders/ (GLSL 150), panel.rs, style.rs
+```
 
 ## License
 
-Plugins that export VST3 through nih-plug link GPLv3 code (`vst3-sys`), so
-this project is GPL-3.0-or-later. A CLAP-only build could use any license.
+Formalin is licensed under the [GNU GPL v3.0 or later](LICENSE). VST3 builds
+link against GPLv3 code (the VST3 bindings used by nih-plug), so the GPL
+applies to them.
 
 [nih-plug]: https://github.com/robbert-vdh/nih-plug

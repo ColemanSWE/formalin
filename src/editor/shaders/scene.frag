@@ -1,5 +1,4 @@
-#version 150
-// The tank and the orb.
+// The tank and the orb. (gl.rs prepends #version and common.glsl.)
 //
 // Screen space `p`: origin at the center, y up, units of window height.
 // The camera sits at z = -3 looking down +z; the orb lives around z = 0.
@@ -18,27 +17,12 @@ uniform float uOrbR;   // orb radius, world units
 uniform float uOrbScreenR;
 uniform vec2 uMouse;   // screen space
 uniform float uGrab, uSqueeze, uWow, uFlutter, uAge, uLevel, uDead;
+// (fingerprints now live in the ink pass, on the glass in front of everything)
 
 const float CAM_Z = -3.0;
 const float FOCAL = 1.5;
 const vec3 LIGHT = vec3(-0.45, 0.8, -0.4);
 
-// ---------------------------------------------------------------- noise
-float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
-float hash31(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
-float vnoise(vec3 x) {
-    vec3 i = floor(x), f = fract(x);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(mix(hash31(i), hash31(i + vec3(1, 0, 0)), f.x),
-                   mix(hash31(i + vec3(0, 1, 0)), hash31(i + vec3(1, 1, 0)), f.x), f.y),
-               mix(mix(hash31(i + vec3(0, 0, 1)), hash31(i + vec3(1, 0, 1)), f.x),
-                   mix(hash31(i + vec3(0, 1, 1)), hash31(i + vec3(1, 1, 1)), f.x), f.y), f.z);
-}
-float fbm(vec3 p) {
-    float a = 0.5, s = 0.0;
-    for (int i = 0; i < 3; i++) { s += a * vnoise(p); p = p * 2.03 + vec3(1.7, 9.2, 3.1); a *= 0.5; }
-    return s;
-}
 float smin(float a, float b, float k) {
     float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
     return mix(b, a, h) - k * h * (1.0 - h);
@@ -73,7 +57,31 @@ vec3 tank(vec3 rd) {
         snow += smoothstep(0.08, 0.0, d) * step(0.8, hash21(id + fl * 13.1))
               * (0.35 + 0.4 * hash21(id + 1.3)) / (1.0 + fl * 0.6);
     }
-    col += vec3(0.75, 0.95, 0.9) * snow;
+    // Holding the orb turns it into a magnet: the drifting particles snap into
+    // the field lines of a dipole around it, like iron filings. Field lines of a
+    // vertical dipole satisfy r = L * sin^2(theta), so constant log(L) traces one.
+    vec2 dm = q - uOrb;
+    float r = length(dm) + 1e-4;
+    float near = exp(-max(r - uOrbScreenR, 0.0) * 4.0) * smoothstep(uOrbScreenR * 0.95, uOrbScreenR * 1.05, r);
+    float magnet = uGrab * near;
+    float sinT = abs(dm.x) / r;
+    float L = r / max(sinT * sinT, 1e-3);
+    float onLine = smoothstep(0.14, 0.0, abs(fract(log(L) * 5.0) - 0.5));
+    float filings = onLine * step(0.5, hash21(floor(q * 240.0))) * (0.5 + 0.5 * hash21(floor(q * 240.0) + 7.0));
+    col += vec3(0.75, 0.95, 0.9) * snow * (1.0 - magnet);
+    col += vec3(0.62, 0.86, 0.82) * filings * magnet * 0.8;
+
+    // Drive heats the orb: past ~35% it boils, shedding bubbles that rise on tape time.
+    float boil = smoothstep(0.35, 1.0, uSqueeze);
+    if (boil > 0.0) {
+        vec2 g = dm * 30.0 + vec2(0.0, -uWorld * 4.0);
+        vec2 id = floor(g), f = fract(g) - 0.5;
+        vec2 o = (vec2(hash21(id + 1.0), hash21(id + 2.0)) - 0.5) * 0.4;
+        float ring = smoothstep(0.06, 0.0, abs(length(f - o) - (0.1 + 0.18 * hash21(id + 5.0))));
+        float column = exp(-abs(dm.x) / (uOrbScreenR * 0.6)) * smoothstep(uOrbScreenR * 0.5, uOrbScreenR * 1.1, dm.y)
+                     * exp(-max(dm.y - uOrbScreenR, 0.0) * 2.0);
+        col += vec3(0.8, 0.95, 0.95) * ring * step(1.0 - boil * 0.6, hash21(id + 9.0)) * column * 0.7;
+    }
 
     // Age: the water goes murky and yellow, like an old specimen jar.
     col = mix(col, vec3(0.15, 0.14, 0.05) + col * 0.45, uAge * 0.5);
@@ -89,7 +97,8 @@ vec3 organelle(int i) {
 
 // Signed distance in the orb's local unit space. `mat` = 0 body, 1 organelle.
 float creature(vec3 q, out float mat) {
-    float beat = 0.05 * uLevel + 0.012 * sin(uTime * 2.6);
+    // It breathes and pulses with the output -- until it's fixed in place.
+    float beat = (0.05 * uLevel + 0.012 * sin(uTime * 2.6)) * (1.0 - uDead);
     float swell = 1.0 + 0.4 * uSqueeze;
     float body = length(q * vec3(1.0, 1.15, 1.0)) - 0.33 * swell - beat;
     body += (fbm(q * 3.2 + vec3(0.0, uWorld * 0.25, 0.0)) - 0.5) * (0.16 + 0.14 * uFlutter);
@@ -208,11 +217,6 @@ void main() {
         float gloss = smoothstep(0.35, 0.95, n.y * 0.92 - n.x * 0.32) * smoothstep(0.05, 0.5, cosT);
         col += vec3(1.0) * gloss * 0.26;
         col += pow(max(dot(reflect(rd, n), L), 0.0), 90.0) * 1.1;
-
-        // A frosted fingerprint where the hand is holding it.
-        float fd = length(p - uMouse);
-        float ridges = 0.5 + 0.5 * sin(fd * 420.0);
-        col = mix(col, vec3(0.82, 0.95, 1.0), uGrab * smoothstep(0.07, 0.0, fd) * ridges * 0.3);
     }
 
     frag = vec4(col, 1.0);

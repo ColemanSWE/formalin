@@ -17,7 +17,7 @@ use nih_plug_egui::egui::{self, pos2, vec2, Align2, Color32, FontId, Painter, Po
 use nih_plug_egui::{create_egui_editor, EguiState};
 use orb::Orb;
 use std::sync::{Arc, Mutex};
-use style::{corepix, esoterica, COOL, DIM, HOT, PAPER};
+use style::{display, sigil_font, Sigil, COOL, DIM, HOT, PAPER};
 
 const WIDTH: u32 = 800;
 const HEIGHT: u32 = 450;
@@ -89,8 +89,10 @@ fn frame(ui: &mut Ui, setter: &ParamSetter, gui: &mut Gui, p: &FormalinParams, m
     let (dsp_speed, lag_s) = debug_preview(gui, dsp_speed, lag_s);
     gui.level = (gui.level * (-dt * 5.0).exp()).max(peak.min(1.5));
     gui.world += (dt * dsp_speed) as f64;
+    // Fixation sets in slowly once the tape is stopped, and clears faster.
     let dead_target = 1.0 - (dsp_speed.abs() * 5.0).min(1.0);
-    gui.dead += (dead_target - gui.dead) * (1.0 - (-dt * 4.0).exp());
+    let rate = if dead_target > gui.dead { 1.2 } else { 3.5 };
+    gui.dead += (dead_target - gui.dead) * (1.0 - (-dt * rate).exp());
     let panel_target = if gui.panel_open { 1.0 } else { 0.0 };
     gui.panel_t += (panel_target - gui.panel_t) * (1.0 - (-dt * 10.0).exp());
 
@@ -141,8 +143,16 @@ fn frame(ui: &mut Ui, setter: &ParamSetter, gui: &mut Gui, p: &FormalinParams, m
         age: p.age.value(),
         level: gui.level,
         dead: gui.dead,
-        persist: (0.55 + 0.42 * p.smear.value() * (0.35 + 0.65 * p.reverb_mix.value())).min(0.97),
+        smear: p.smear.value(),
+        dt,
+        dt_world: dt * dsp_speed,
+        // Ink lasts about as long as the reverb tail, measured in tape time.
+        ink_keep: (-dt * dsp_speed.abs() / (0.15 + p.decay.value() * 0.5)).exp(),
+        ink_emit: gui.level.min(1.0) * (0.2 + 1.8 * p.reverb_mix.value()) * dsp_speed.signum(),
+        // Fresh tape: prints vanish in a blink. Old tape: they stay for ages.
+        smudge_keep: (-dt / (0.3 + 40.0 * p.age.value().powi(2))).exp(),
     };
+    let u = debug_preview_uniforms(u);
     let renderer = gui.renderer.clone();
     ui.painter().add(egui::PaintCallback {
         rect,
@@ -169,47 +179,49 @@ fn frame(ui: &mut Ui, setter: &ParamSetter, gui: &mut Gui, p: &FormalinParams, m
         painter.text(rect.center(), Align2::CENTER_CENTER, format!("GL error:\n{e}"), FontId::monospace(11.0), Color32::RED);
     }
 
-    let tl = rect.left_top() + vec2(24.0, 22.0);
-    aberrated(painter, tl, Align2::LEFT_TOP, "FORMALIN", corepix(34.0));
-    painter.text(tl + vec2(2.0, 40.0), Align2::LEFT_TOP, "PRESERVATIVE FOR MAGNETIC TAPE", corepix(13.0), DIM);
+    specimen_label(painter, rect.left_top() + vec2(20.0, 18.0));
 
-    // Esoterica is a symbol font: J sunburst, G moon, L eye, C sun face.
-    let (glyph, mode, color) = if gui.dead > 0.6 {
-        ("G", "STILL".to_owned(), HOT)
+    let (sigil, mode, color) = if gui.dead > 0.6 {
+        (Sigil::Fixed, "FIXED".to_owned(), HOT)
     } else if dsp_speed < -0.02 {
-        ("L", format!("REW  X{:.2}", -dsp_speed), COOL)
+        (Sigil::Rewind, format!("REW  X{:.2}", -dsp_speed), COOL)
     } else if dsp_speed > 1.02 && lag_s > 0.005 {
-        ("C", format!("CATCH-UP  X{dsp_speed:.2}"), COOL)
+        (Sigil::CatchUp, format!("CATCH-UP  X{dsp_speed:.2}"), COOL)
     } else {
-        ("J", format!("PLAY  X{dsp_speed:.2}"), PAPER)
+        (Sigil::Play, format!("PLAY  X{dsp_speed:.2}"), PAPER)
     };
     let tr = rect.right_top() + vec2(-24.0, 24.0);
-    let mode_rect = painter.text(tr, Align2::RIGHT_TOP, mode, corepix(18.0), color);
-    painter.text(mode_rect.left_center() + vec2(-8.0, 0.0), Align2::RIGHT_CENTER, glyph, esoterica(26.0), color);
-    painter.text(tr + vec2(0.0, 24.0), Align2::RIGHT_TOP, format!("LAG {lag_s:.2}s"), corepix(13.0), DIM);
+    let mode_rect = painter.text(tr, Align2::RIGHT_TOP, mode, display(18.0), color);
+    painter.text(mode_rect.left_center() + vec2(-8.0, 0.0), Align2::RIGHT_CENTER, sigil.glyph(), sigil_font(24.0), color);
+    painter.text(tr + vec2(0.0, 24.0), Align2::RIGHT_TOP, format!("LAG {lag_s:.2}s"), display(13.0), DIM);
     let readout = format!(
         "DRIVE {:.1}dB   PITCH {:+.2}st   {}",
         p.drive.value(),
         p.pitch.value(),
         if p.tape_stop.value() { "TAPE STOP ON" } else { "" }
     );
-    painter.text(tr + vec2(0.0, 44.0), Align2::RIGHT_TOP, readout, corepix(11.0), DIM);
+    painter.text(tr + vec2(0.0, 44.0), Align2::RIGHT_TOP, readout, display(11.0), DIM);
 
     if gui.panel_t < 0.98 {
         let by = rect.bottom() - 18.0 - PANEL_H * gui.panel_t;
-        // A hand, K dice, H poison, G moon.
         let mut x = rect.left() + 24.0;
-        for (glyph, hint) in [("A", "HOLD TO STOP"), ("K", "SPIN TO SCRUB"), ("H", "RIGHT-DRAG TO SQUEEZE"), ("G", "SCROLL TO SINK")] {
-            let g = painter.text(pos2(x, by), Align2::LEFT_CENTER, glyph, esoterica(18.0), DIM);
-            let t = painter.text(pos2(g.right() + 5.0, by + 1.0), Align2::LEFT_CENTER, hint, corepix(11.0), DIM);
+        let hints = [
+            (Sigil::Hold, "HOLD TO STOP"),
+            (Sigil::Spin, "SPIN TO SCRUB"),
+            (Sigil::Squeeze, "RIGHT-DRAG TO SQUEEZE"),
+            (Sigil::Sink, "SCROLL TO SINK"),
+        ];
+        for (sigil, hint) in hints {
+            let g = painter.text(pos2(x, by), Align2::LEFT_CENTER, sigil.glyph(), sigil_font(16.0), DIM);
+            let t = painter.text(pos2(g.right() + 5.0, by + 1.0), Align2::LEFT_CENTER, hint, display(11.0), DIM);
             x = t.right() + 16.0;
         }
         let link_pos = pos2(rect.right() - 24.0, by);
-        let galley = painter.layout_no_wrap("[service panel]".into(), corepix(12.0), PAPER);
+        let galley = painter.layout_no_wrap("[service panel]".into(), display(12.0), PAPER);
         let r = Align2::RIGHT_CENTER.anchor_size(link_pos, galley.size());
         let resp = ui.interact(r, ui.id().with("open-panel"), Sense::click());
         let c = if resp.hovered() { HOT } else { PAPER };
-        painter.text(r.min, Align2::LEFT_TOP, "[service panel]", corepix(12.0), c);
+        painter.text(r.min, Align2::LEFT_TOP, "[service panel]", display(12.0), c);
         if resp.clicked() {
             gui.panel_open = !gui.panel_open;
         }
@@ -220,26 +232,64 @@ fn frame(ui: &mut Ui, setter: &ParamSetter, gui: &mut Gui, p: &FormalinParams, m
     }
 }
 
-/// Debug builds only: `FORMALIN_PREVIEW=panel|still|rew` forces a state so the
-/// standalone build can be screenshotted without touching the mouse.
+/// Debug builds only: `FORMALIN_PREVIEW=panel,still,rew,held,hot,aged` (any
+/// combination) forces states so the standalone can be screenshotted without
+/// touching the mouse.
+fn preview_has(flag: &str) -> bool {
+    cfg!(debug_assertions)
+        && std::env::var("FORMALIN_PREVIEW").is_ok_and(|v| v.split(',').any(|f| f.trim() == flag))
+}
+
 fn debug_preview(gui: &mut Gui, speed: f32, lag_s: f32) -> (f32, f32) {
-    if !cfg!(debug_assertions) {
-        return (speed, lag_s);
+    if preview_has("panel") {
+        gui.panel_open = true;
     }
-    match std::env::var("FORMALIN_PREVIEW").as_deref() {
-        Ok("panel") => {
-            gui.panel_open = true;
-            (speed, lag_s)
-        }
-        Ok("still") => (0.0, 1.4),
-        Ok("rew") => (-0.8, 2.1),
-        _ => (speed, lag_s),
+    if preview_has("still") {
+        (0.0, 1.4)
+    } else if preview_has("rew") {
+        (-0.8, 2.1)
+    } else {
+        (speed, lag_s)
     }
 }
 
-/// Text with a pink/cyan chromatic offset, like the portfolio's hero.
-fn aberrated(painter: &Painter, at: Pos2, align: Align2, text: &str, font: FontId) {
-    painter.text(at + vec2(-2.0, 0.0), align, text, font.clone(), HOT.gamma_multiply(0.85));
-    painter.text(at + vec2(2.0, 0.6), align, text, font.clone(), COOL.gamma_multiply(0.85));
-    painter.text(at, align, text, font, PAPER);
+fn debug_preview_uniforms(mut u: Uniforms) -> Uniforms {
+    if preview_has("held") {
+        u.grab = 1.0;
+        u.mouse = [u.orb[0] + 0.06, u.orb[1] + 0.05];
+    }
+    if preview_has("hot") {
+        u.drive = 1.0;
+        u.squeeze = 1.0;
+        u.level = 0.9;
+        u.ink_emit = 2.0;
+        u.smear = 1.0;
+    }
+    if preview_has("aged") {
+        u.age = 1.0;
+        u.smudge_keep = 1.0;
+    }
+    u
+}
+
+/// The title, as a typed museum specimen label stuck to the front of the tank.
+fn specimen_label(painter: &Painter, at: Pos2) {
+    const CARD: Color32 = Color32::from_rgb(0xe8, 0xe2, 0xcf);
+    const TYPE: Color32 = Color32::from_rgb(0x22, 0x1f, 0x1a);
+    const RED: Color32 = Color32::from_rgb(0x9a, 0x1b, 0x1b);
+    let card = Rect::from_min_size(at, vec2(232.0, 70.0));
+    painter.rect_filled(card.translate(vec2(2.0, 3.0)), 1.0, Color32::from_black_alpha(90));
+    painter.rect_filled(card, 1.0, CARD);
+    painter.rect_stroke(card.shrink(3.0), 0.0, egui::Stroke::new(1.0, TYPE.gamma_multiply(0.6)), egui::StrokeKind::Inside);
+    let x = card.left() + 12.0;
+    painter.text(pos2(x, card.top() + 10.0), Align2::LEFT_TOP, "FORMALIN", display(28.0), TYPE);
+    painter.line_segment([pos2(x, card.top() + 42.0), pos2(card.right() - 12.0, card.top() + 42.0)], egui::Stroke::new(1.0, RED));
+    painter.text(pos2(x, card.top() + 46.0), Align2::LEFT_TOP, "PRESERVATIVE FOR MAGNETIC TAPE", display(10.0), TYPE);
+    painter.text(
+        pos2(card.right() - 12.0, card.top() + 14.0),
+        Align2::RIGHT_TOP,
+        concat!("LOT ", env!("CARGO_PKG_VERSION")),
+        FontId::monospace(9.0),
+        RED,
+    );
 }

@@ -85,8 +85,8 @@ impl Reverb {
         let dr = self.diff_r.iter_mut().fold(r, |x, ap| ap.process(x, g));
 
         let mut outs = [0.0; 4];
-        for i in 0..4 {
-            outs[i] = self.damp[i].lowpass(self.lines[i].tap(self.lens[i]), self.damp_coeff);
+        for (i, out) in outs.iter_mut().enumerate() {
+            *out = self.damp[i].lowpass(self.lines[i].tap(self.lens[i]), self.damp_coeff);
         }
 
         // Householder matrix (I - 2/N * ones): mixes every line into every

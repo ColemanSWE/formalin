@@ -30,6 +30,7 @@ pub fn draw(ui: &Ui, painter: &Painter, rect: Rect, p: &FormalinParams, setter: 
         reset(setter, &p.drive);
         reset(setter, &p.age);
         reset(setter, &p.pitch);
+        reset(setter, &p.pitch_pos);
         reset(setter, &p.output);
         reset(setter, &p.smear);
         reset(setter, &p.decay);
@@ -40,21 +41,24 @@ pub fn draw(ui: &Ui, painter: &Painter, rect: Rect, p: &FormalinParams, setter: 
         reset(setter, &p.catch_up);
     }
 
-    // Grouped like HTML <fieldset>s, in signal-chain order:
-    //   row 1: pitch -> wobble -> tape -> reverb
-    //   row 2: transport, output
+    // Grouped like HTML <fieldset>s, read in signal-chain order:
+    //   row 1: pitch -> wobble -> tape
+    //   row 2: reverb -> transport -> output
+    // (Pitch Position decides whether the pitch shift lands before the tape,
+    // after the reverb, or split between them.)
     let inner = Rect::from_min_max(pos2(rect.left() + 12.0, rect.top() + 40.0), pos2(rect.right() - 12.0, rect.bottom() - 10.0));
     let row_gap = 14.0;
     let row_h = (inner.height() - row_gap) / 2.0;
     let row1 = Rect::from_min_size(inner.min, vec2(inner.width(), row_h));
     let row2 = Rect::from_min_size(pos2(inner.left(), inner.top() + row_h + row_gap), vec2(inner.width(), row_h));
 
-    let [pitch, wobble, tape, reverb] = groups(row1, [1, 2, 2, 3]);
-    let [transport, out] = groups(row2, [3, 1]);
+    let [pitch, wobble, tape] = groups(row1, [2, 2, 2]);
+    let [reverb, transport, out] = groups(row2, [3, 3, 1]);
 
     // Each control gets a sigil (see style::Sigil).
-    let c = fieldset(painter, pitch, "PITCH", 1);
+    let c = fieldset(painter, pitch, "PITCH", 2);
     slider(ui, painter, c[0], &p.pitch, setter, "pitch", Sigil::Pitch);
+    slider(ui, painter, c[1], &p.pitch_pos, setter, "position", Sigil::PitchPos);
 
     let c = fieldset(painter, wobble, "WOBBLE", 2);
     slider(ui, painter, c[0], &p.wow, setter, "wow", Sigil::Wow);

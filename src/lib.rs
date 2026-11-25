@@ -91,6 +91,7 @@ impl Plugin for Formalin {
                 drive_gain: util::db_to_gain(p.drive.smoothed.next()),
                 age: p.age.smoothed.next(),
                 semitones: p.pitch.smoothed.next(),
+                pitch_pos: p.pitch_pos.smoothed.next(),
                 smear: p.smear.smoothed.next(),
                 decay_s: p.decay.smoothed.next(),
                 reverb_mix: p.reverb_mix.smoothed.next(),

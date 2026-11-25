@@ -66,6 +66,7 @@ pub enum Sigil {
     Drive,
     Age,
     Pitch,
+    PitchPos,
     Smear,
     Decay,
     Wet,
@@ -91,6 +92,7 @@ impl Sigil {
             Sigil::Drive => "\u{1F702}",   // fire
             Sigil::Age => "\u{1F71E}",     // crocus of iron: rust, like tape oxide
             Sigil::Pitch => "\u{1F703}",   // earth
+            Sigil::PitchPos => "\u{1F73A}", // two points joined: before <-> after
             Sigil::Smear => "\u{1F705}",   // aqua fortis
             Sigil::Decay => "\u{1F70D}",   // sulfur
             Sigil::Wet => "\u{1F708}",     // aqua vitae
@@ -118,6 +120,7 @@ impl Sigil {
             Sigil::Drive => "H",
             Sigil::Age => "F",
             Sigil::Pitch => "I",
+            Sigil::PitchPos => "I",
             Sigil::Smear => "L",
             Sigil::Decay => "C",
             Sigil::Wet => "B",

@@ -88,7 +88,11 @@ fn frame(ui: &mut Ui, setter: &ParamSetter, gui: &mut Gui, p: &FormalinParams, m
     let (peak, dsp_speed, lag_s) = meters.load();
     let (dsp_speed, lag_s) = debug_preview(gui, dsp_speed, lag_s);
     gui.level = (gui.level * (-dt * 5.0).exp()).max(peak.min(1.5));
-    gui.world += (dt * dsp_speed) as f64;
+    // Pitch applied after the tape slows (or speeds) the room itself, so the
+    // tank's caustics, particles and ink run at that rate too. The orb, being
+    // the tape, keeps its own speed.
+    let room = (p.pitch.value() * p.pitch_pos.value() / 12.0).exp2();
+    gui.world += (dt * dsp_speed * room) as f64;
     // Fixation sets in slowly once the tape is stopped, and clears faster.
     let dead_target = 1.0 - (dsp_speed.abs() * 5.0).min(1.0);
     let rate = if dead_target > gui.dead { 1.2 } else { 3.5 };
@@ -145,7 +149,7 @@ fn frame(ui: &mut Ui, setter: &ParamSetter, gui: &mut Gui, p: &FormalinParams, m
         dead: gui.dead,
         smear: p.smear.value(),
         dt,
-        dt_world: dt * dsp_speed,
+        dt_world: dt * dsp_speed * room,
         // Ink lasts about as long as the reverb tail, measured in tape time.
         ink_keep: (-dt * dsp_speed.abs() / (0.15 + p.decay.value() * 0.5)).exp(),
         ink_emit: gui.level.min(1.0) * (0.2 + 1.8 * p.reverb_mix.value()) * dsp_speed.signum(),
@@ -195,9 +199,10 @@ fn frame(ui: &mut Ui, setter: &ParamSetter, gui: &mut Gui, p: &FormalinParams, m
     painter.text(mode_rect.left_center() + vec2(-8.0, 0.0), Align2::RIGHT_CENTER, sigil.glyph(), sigil_font(24.0), color);
     painter.text(tr + vec2(0.0, 24.0), Align2::RIGHT_TOP, format!("LAG {lag_s:.2}s"), display(13.0), DIM);
     let readout = format!(
-        "DRIVE {:.1}dB   PITCH {:+.2}st   {}",
+        "DRIVE {:.1}dB   PITCH {:+.2}st {}   {}",
         p.drive.value(),
         p.pitch.value(),
+        p.pitch_pos.to_string().to_uppercase(),
         if p.tape_stop.value() { "TAPE STOP ON" } else { "" }
     );
     painter.text(tr + vec2(0.0, 44.0), Align2::RIGHT_TOP, readout, display(11.0), DIM);

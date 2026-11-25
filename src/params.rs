@@ -25,6 +25,9 @@ pub struct FormalinParams {
     // -- Pitch & transport --
     #[id = "pitch"]
     pub pitch: FloatParam,
+    /// Where the pitch shift happens: 0 = before the tape, 1 = after the reverb.
+    #[id = "pitchpos"]
+    pub pitch_pos: FloatParam,
     #[id = "stop"]
     pub tape_stop: BoolParam,
     #[id = "stoptime"]
@@ -65,6 +68,25 @@ impl Default for FormalinParams {
                 .with_smoother(SmoothingStyle::Linear(80.0))
                 .with_step_size(0.01)
                 .with_unit(" st"),
+            pitch_pos: FloatParam::new("Pitch Position", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_smoother(SmoothingStyle::Linear(80.0))
+                .with_value_to_string(Arc::new(|v| {
+                    if v < 0.005 {
+                        "pre".to_owned()
+                    } else if v > 0.995 {
+                        "post".to_owned()
+                    } else {
+                        format!("{:.0}% post", v * 100.0)
+                    }
+                }))
+                .with_string_to_value(Arc::new(|s| {
+                    let s = s.trim().to_lowercase();
+                    match s.as_str() {
+                        "pre" => Some(0.0),
+                        "post" => Some(1.0),
+                        _ => s.trim_end_matches("post").trim().trim_end_matches('%').trim().parse::<f32>().ok().map(|v| (v / 100.0).clamp(0.0, 1.0)),
+                    }
+                })),
             tape_stop: BoolParam::new("Tape Stop", false),
             stop_time: FloatParam::new(
                 "Stop Time",

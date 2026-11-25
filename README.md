@@ -8,7 +8,7 @@ reverse and throw.
 ![Formalin's window: a glass orb holding a creature, floating in a murky specimen tank](docs/screenshot.png)
 
 ```
-in -> pitch -> wow/flutter -> saturation -> reverb -> transport -> out
+in -> pitch (pre) -> wow/flutter -> saturation -> reverb -> pitch (post) -> transport -> out
 ```
 
 ## Playing it
@@ -41,6 +41,8 @@ The picture is driven by the same values as the sound:
 - **Stopping:** the formalin *fixes*: the water clouds milky from the edges
   in and the creature goes grey and still.
 - **Wow / Flutter:** the image sways and jitters like a worn tape.
+- **Pitch Position:** pitch applied after the tape slows the whole tank
+  down with it, not just the orb.
 - **Drive:** the orb flattens, reddens and boils, with heat haze rising off it.
 - **Reverb:** the creature bleeds ink into the water in time with the output
   level; Decay sets how long it hangs there.
@@ -52,6 +54,7 @@ The picture is driven by the same values as the sound:
 | Group | Parameter | What it does |
 |---|---|---|
 | Pitch | Pitch | Real-time pitch shift, -12 to +12 semitones |
+| Pitch | Position | Where the shift happens: *pre* (before the tape, so the reverb tail isn't pitched), *post* (after the reverb, so the whole room is pitched), or split between the two |
 | Wobble | Wow / Flutter | Slow wobble and fast jitter of tape speed |
 | Tape | Drive / Age | Asymmetric tape saturation / high-frequency loss of worn tape |
 | Reverb | Smear / Decay / Wet-dry | Diffused reverb: blur, decay time (RT60), and the reverb's own wet/dry mix |

@@ -1,0 +1,39 @@
+[package]
+name = "formalin"
+version = "0.1.0"
+edition = "2021"
+description = "A glass orb of tape: wow & flutter, saturation, pitch, smeared reverb, and a transport you can grab"
+license = "GPL-3.0-or-later"
+
+[workspace]
+members = ["xtask"]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+# `assert_process_allocs` panics (in debug builds only) if you allocate on the
+# audio thread -- great training wheels for real-time code.
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["assert_process_allocs"] }
+nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+# Same egui_glow version nih_plug_egui renders with, so our GL callbacks downcast.
+egui_glow = "0.31"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"
+
+[features]
+# `cargo run --features standalone --bin formalin_standalone` opens the plugin
+# as a desktop app, handy for UI work without restarting the DAW.
+standalone = ["nih_plug/standalone"]
+
+[[bin]]
+name = "formalin_standalone"
+path = "src/main.rs"
+required-features = ["standalone"]

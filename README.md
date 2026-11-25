@@ -11,6 +11,17 @@ reverse and throw.
 in -> pitch (pre) -> wow/flutter -> saturation -> reverb -> pitch (post) -> transport -> out
 ```
 
+## Download
+
+Grab the latest build for your platform. Each zip holds the VST3 and CLAP
+versions; see [Installing](#installing) for where they go.
+
+- [Windows](https://github.com/ColemanSWE/formalin/releases/latest/download/Formalin-windows.zip)
+- [macOS](https://github.com/ColemanSWE/formalin/releases/latest/download/Formalin-macos.zip) (Apple Silicon and Intel)
+- [Linux](https://github.com/ColemanSWE/formalin/releases/latest/download/Formalin-linux.zip)
+
+Older versions are on the [releases page](https://github.com/ColemanSWE/formalin/releases).
+
 ## Playing it
 
 The window is a specimen tank holding a glass orb with something alive
@@ -135,6 +146,15 @@ cargo run --features standalone --bin formalin_standalone -- --backend dummy
 The second command opens the plugin as a desktop app, so you can work on the
 UI without a DAW. In debug builds, set `FORMALIN_PREVIEW` to any of
 `panel,still,rew,held,hot,aged` to force those states for screenshots.
+
+To publish a release, bump `version` in `Cargo.toml`, commit, then push a
+matching tag. CI builds every platform and attaches the zips to a new
+GitHub Release:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
 
 ```
 src/lib.rs        plugin glue: nih-plug traits and the process loop
